@@ -1,6 +1,25 @@
 ## 更新日志
 > 更新方法：在 gd-utils 目录下，执行 `git pull` 拉取最新代码，如果你使用了 pm2 守护进程，执行`pm2 reload server`刷新生效。
 
+### [2020-08-06]
+- 由于最近`userRateLimitExceeded`的错误越来越频繁出现，看上去Google除了每日750G以外又加上了什么限制。我只好把剔除SA的条件从“连续2次”遇到这种报错消息改成了**连续7次**……这个值也可以自定义，只需要在`config.js`中导出一个 `EXCEED_LIMIT`的变量，具体方法请参考[专家设置](https://github.com/iwestlin/gd-utils/blob/master/readme.md#%E4%B8%93%E5%AE%B6%E8%AE%BE%E7%BD%AE)
+
+- 另外为了用户体验还隐去了包含`rate limit`的报错信息，同时将重置SA（也就是重新启用被剔除的SA）改成了每2小时执行一次（原来是12小时）
+
+### [2020-08-05]
+- 配合[gdshare](https://github.com/iwestlin/gdshare)使用，给 [aria2.js](./aria2.js) 添加 `--hashkey` `--cf` `--expire` 选项，具体含义请执行 `./aria2.js -h` 查看。  
+使用示例：
+```bash
+./aria2.js folderID -k 'your hashkey' -c 'your.domain.com' -S
+```
+这条命令会在当前目录生成一个包含所有文件下载链接的文本文件并输出一条以 `aria2c` 开头的命令，执行这条命令即可调用[aria2c](https://aria2.github.io/)下载整个`folderID`目录，并保留目录结构。
+
+### [2020-08-02] 关于“没有可用的SA”报错信息
+- 最近Google Drive的 API 似乎有点抽风，转存新分享的资源时经常随机遇到`userRateLimitExceeded`（一般这种错误只会在SA用完每日转存流量750G时触发）的接口返回错误导致SA被剔除（即使是新加的SA也会遇到），而对于比较老的分享或者自己团队盘文件对拷则没问题。  
+不得已我只好修改了一下程序的逻辑，只有当SA连续两次遇到`userRateLimitExceeded`的错误时才会被剔除，在这种条件下，据我的观察，拷贝一个新分享的资源时，平均每转存100个文件会被剔除掉一个SA。  
+如果你不希望因为接口返回`userRateLimitExceeded`而剔除掉对应的SA，可以手动修改代码，方法见：https://github.com/iwestlin/gd-utils/issues/138#issuecomment-666156273
+- 命令行添加 `--dncf` 参数，表示`do not copy folders`，即转存资源时不复制任何递归子目录，直接将所有文件拷贝到新生成的文件夹中。
+
 [2020-07-28]  
 - 添加 [aria2.js](https://github.com/iwestlin/gd-utils/blob/master/aria2.js) 脚本，方便利用 `aria2c` 下载google drive目录，使用帮助可执行 `./aria2.js -h` 查看。
 
