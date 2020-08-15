@@ -24,7 +24,7 @@ const BUTTONS = {
     command: '/restart'
   },
   runshell: {
-    label: '⌨️ runshell',
+    label: '👋 runshell',
     command: '/runshell'
   },
   update: {
@@ -49,7 +49,7 @@ const bot = new TeleBot({
   usePlugins: ['reporter'],
   pluginConfig: {
       reporter: {
-          events: ['connect', 'reconnect', 'reconnected', 'stop', 'error','*'],
+          events: ['reconnect', 'reconnected', 'stop', 'error'],
           to: adminUsers
       }
   },
@@ -76,37 +76,31 @@ function exec (cmd, msg) {
   let len = words.length;
   let args = [];
   if (len > 1 ){
-      args = words.slice(0, len);
-
+      args = words.slice(1, len);
   }
-    console.log('run shell2    ')
-    msg.reply.text('$: '+words[0] + "  " + args);
+    console.log( len,args )
+    console.log( words[0] )
+    // msg.reply.text('$: '+words[0] + " " +  args);
     const shell = spawn(words[0],args).on('error', function( err ){
-        msg.reply.text('error while executing:'+words[1]);
         msg.reply.text(err);
     });
 
     if(shell){
-
        shell.stdout.on('data', (data) => {
-        msg.reply.text(`stdout:\n ${data}`);
+        msg.reply.text(`${data}`);
        });
-
        shell.stderr.on('data', (data) => {
         msg.reply.text(`stderr: ${data}`);
-       });
-
-       shell.on('close', (code) => {
-        msg.reply.text(`shell exited with code ${code}`);
        });
     }
 }
 
-// bot.sendMessage(1289547773,"you gdutils_bot ins online!") 
+// bot.sendMessage(1289547773,"you gdutils_bot ins online!") //填写你的chat id ,机器人上线时你第一时间里会收到通知
 
 bot.on('/yd', (msg) =>{
   if(MSG.startsWith('http')){
     let ydurl = 'yd ' + MSG;
+    console.log( ydurl )
     msg.reply.text('run yd ');
     exec(ydurl, msg);
     return bot.sendMessage(msg.from.id, '已执行！', {replyMarkup: 'hide'});
@@ -114,9 +108,8 @@ bot.on('/yd', (msg) =>{
   return bot.sendMessage(msg.from.id, '无地址 ！', {replyMarkup: 'hide'});
 });
 
-bot.on('/aria2', (msg) => exec('/bin/aria2 '+ MSG, msg));
-
-bot.on('/hide', (msg) => msg.reply.text('', {replyMarkup: 'hide'}));
+bot.on('/aria2', (msg) => exec('aria2 ' + MSG, msg));
+bot.on('/hide', (msg) => msg.reply.text('Type /start to show keyboard again.', {replyMarkup: 'hide'}));
 bot.on('/restart', (msg) => {
   exec('pm2 restart all', msg);
   msg.reply.text('restarting!')
@@ -125,13 +118,11 @@ bot.on('/restart', (msg) => {
 bot.on('/update', msg => {
   exec('git pull -f', msg);
   msg.reply.text('updating !')
-  exec('pm2 restart all', msg);
-  msg.reply.text('updated!')
 });
 
 bot.on('/runshell', msg => {
   if(MSG == "")return bot.sendMessage(msg.from.id, '无命令', {replyMarkup: 'hide'});
-    msg.reply.text('run shell:'+MSG);
+    msg.reply.text('run shell:' + MSG);
     exec(MSG, msg);
     return bot.sendMessage(msg.from.id, '已执行！', {replyMarkup: 'hide'});
 });
@@ -141,7 +132,7 @@ bot.on('/start', (msg) => {
       [BUTTONS.update.label, BUTTONS.restart.label],
       [BUTTONS.hide.label]
   ], {resize: true});
-  return bot.sendMessage(msg.from.id, 'See keyboard below.', {replyMarkup});
+  return bot.sendMessage(msg.from.id, 'ChatId is ' + msg.chat.id + ',See keyboard below.', {replyMarkup});
 });
 
 bot.on('/error', (msg) => msg.MAKE_AN_ERROR);
@@ -168,9 +159,11 @@ bot.on('text', (msg) => {
         return console.warn('收到非白名单用户的请求')
     }
       const fid = extract_fid(text) || extract_from_text(text) || extract_from_text(message_str)
-      const no_fid_commands = ['/task', '/help', '/bm', '/hide']
+      const no_fid_commands = ['/task', '/help', '/bm']
       if (!no_fid_commands.some(cmd => text.startsWith(cmd)) && !validate_fid(fid)) {
-        
+        console.log(message_str);
+        if (text.startsWith('/')) return;
+        sm({ chat_id, text: '未识别出分享ID --' + message_str })
         if(message_str.startsWith('http')){
           is_shell = true
           let replyMarkup = bot.keyboard([
@@ -179,12 +172,11 @@ bot.on('text', (msg) => {
           ], {resize: true});
           return bot.sendMessage(msg.from.id, '你可能要执行：', {replyMarkup});
           }
-          let replyMarkup = bot.keyboard([
-            [BUTTONS.update.label, BUTTONS.runshell.label],
-            [BUTTONS.hide.label]
-          ], {resize: true});
-          bot.sendMessage(msg.from.id, '你可能要执行：', {replyMarkup});
-        return sm({ chat_id, text: '未识别出分享ID' });
+        let replyMarkup = bot.keyboard([
+          [BUTTONS.update.label, BUTTONS.runshell.label],
+          [BUTTONS.hide.label]
+        ], {resize: true});
+        return bot.sendMessage(msg.from.id, '你可能要执行：', {replyMarkup});
       }
       if (text.startsWith('/help')) return send_help(chat_id)
       if (text.startsWith('/bm')) {
@@ -335,5 +327,6 @@ bot.on(/^!.*/, (msg, props) => {
 }
 
 });
-
+bot.on('/error', (msg) => msg.MAKE_AN_ERROR);
+bot.on('/stop', () => bot.stop('bye!'));
 bot.start();
