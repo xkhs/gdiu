@@ -111,6 +111,10 @@ $cmd_install install nodejs -y
 $cmd_install_rpm_build
 git clone https://github.com/dissipator/gd-utils.git gd-utils && cd gd-utils
 npm config set unsafe-perm=true
+npm install -g node-gyp 
+# 如果better-sqlite3有安装错误,报python 变量的错 设置python npm变量 如果不行直接加入系统的环境变量的path
+# npm config set python python2.7地址
+npm config set python $(which python2.7)
 npm i
 
 echo -e "\n$color_yellow★★★ 恭喜您!gdutils统计转存系统已经正确安装完成，请上传sa到“./gd-utils/sa/”目录下完成最后的配置 ★★★$color_end\n"

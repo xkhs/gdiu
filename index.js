@@ -9,15 +9,148 @@ const { AUTH, ROUTER_PASSKEY, TG_IPLIST } = require('./config')
 const { tg_whitelist } = AUTH
 const { tg_token } = AUTH
 const { adminUsers } = AUTH
-const bot = new TeleBot(tg_token);
+
+const BUTTONS = {
+  youtube: {
+      label: '👋 youtube',
+      command: '/yd'
+  },
+  aria2: {
+      label: '🌍 aria2',
+      command: '/aria2'
+  },
+  restart: {
+    label: '👋 restart',
+    command: '/restart'
+  },
+  runshell: {
+    label: '👋 runshell',
+    command: '/runshell'
+  },
+  update: {
+      label: '🌍 update',
+      command: '/update'
+  },
+  hello: {
+      label: '👋 Hello',
+      command: '/hello'
+  },
+  world: {
+      label: '🌍 World',
+      command: '/world'
+  },
+  hide: {
+      label: '⌨️ Hide keyboard',
+      command: '/hide'
+  }
+};
+const bot = new TeleBot({
+  token: tg_token,
+  usePlugins: ['reporter'],
+  pluginConfig: {
+      reporter: {
+          events: ['connect', 'reconnect', 'reconnected', 'stop', 'error','*'],
+          to: adminUsers
+      }
+  },
+  usePlugins: ['namedButtons'],
+  pluginConfig: {
+      namedButtons: {
+          buttons: BUTTONS
+      }
+  },
+});
 
 const COPYING_FIDS = {}
 const counting = {}
+let MSG = '';
+
+function exec (cmd, msg) {
+  const id = msg.from.id;
+  if(adminUsers.indexOf(id) < 0){
+      msg.reply.text('您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username');
+      return console.warn('收到非白名单用户的请求')
+  }
+
+  let words = String(cmd).split(" ");
+  let len = words.length;
+  let args = [];
+  if (len > 1 ){
+      args = words.slice(0, len);
+
+  }
+    console.log('run shell2    ')
+    msg.reply.text('$: '+words[0] + "  " + args);
+    const shell = spawn(words[0],args).on('error', function( err ){
+        msg.reply.text('error while executing:'+words[1]);
+        msg.reply.text(err);
+    });
+
+    if(shell){
+
+       shell.stdout.on('data', (data) => {
+        msg.reply.text(`stdout:\n ${data}`);
+       });
+
+       shell.stderr.on('data', (data) => {
+        msg.reply.text(`stderr: ${data}`);
+       });
+
+       shell.on('close', (code) => {
+        msg.reply.text(`shell exited with code ${code}`);
+       });
+    }
+}
+
+bot.sendMessage(1289547773,"you gdutils_bot ins online!") 
+
+bot.on('/yd', (msg) =>{
+  if(MSG.startsWith('http')){
+    let ydurl = 'yd ' + MSG;
+    msg.reply.text('run yd ');
+    exec(ydurl, msg);
+    return bot.sendMessage(msg.from.id, '已执行！', {replyMarkup: 'hide'});
+  }
+  return bot.sendMessage(msg.from.id, '无地址 ！', {replyMarkup: 'hide'});
+});
+
+bot.on('/aria2', (msg) => msg.reply.text('aria2 aria2!'));
+bot.on('/hide', (msg) => msg.reply.text('Type /start to show keyboard again.', {replyMarkup: 'hide'}));
+bot.on('/restart', (msg) => {
+  exec('pm2 restart all', msg);
+  msg.reply.text('restarting!')
+});
+
+bot.on('/update', msg => {
+  exec('git pull -f', msg);
+  msg.reply.text('updating !')
+  exec('pm2 restart all', msg);
+  msg.reply.text('updated!')
+});
+
+bot.on('/runshell', msg => {
+  if(MSG == "")return bot.sendMessage(msg.from.id, '无命令', {replyMarkup: 'hide'});
+    msg.reply.text('run shell:'+MSG);
+    exec(MSG, msg);
+    return bot.sendMessage(msg.from.id, '已执行！', {replyMarkup: 'hide'});
+});
+
+bot.on('/start', (msg) => {
+  let replyMarkup = bot.keyboard([
+      [BUTTONS.update.label, BUTTONS.restart.label],
+      [BUTTONS.hide.label]
+  ], {resize: true});
+  return bot.sendMessage(msg.from.id, 'See keyboard below.', {replyMarkup});
+});
+
+bot.on('/error', (msg) => msg.MAKE_AN_ERROR);
+bot.on('/stop', () => bot.stop('bye!'));
 
 bot.on('text', (msg) => {
-
+    MSG = msg.text;
     const chat_id = msg && msg.chat && msg.chat.id
-    // console.log(msg);
+    // console.log(MSG);
+
     // console.log('chat_id:   '+ chat_id);
     // let prex = String(msg.text).substring(0,1);
     // console.log(prex);
@@ -33,18 +166,24 @@ bot.on('text', (msg) => {
         msg.reply.text('您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username');
         return console.warn('收到非白名单用户的请求')
     }
-    // if (!chat_id || !tg_whitelist.some(v => {
-    //   v = String(v).toLowerCase()
-    //   return v === username || v === user_id
-    // })) {
-    //   chat_id && sm({ chat_id, text: '您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username' })
-    //   return console.warn('收到非白名单用户的请求')
-    // }
       const fid = extract_fid(text) || extract_from_text(text) || extract_from_text(message_str)
       const no_fid_commands = ['/task', '/help', '/bm']
       if (!no_fid_commands.some(cmd => text.startsWith(cmd)) && !validate_fid(fid)) {
-        sm({ chat_id, text: '未识别出分享ID' })
-        is_shell = true
+        
+        if(message_str.startsWith('http')){
+          is_shell = true
+          let replyMarkup = bot.keyboard([
+            [BUTTONS.youtube.label, BUTTONS.aria2.label],
+            [BUTTONS.hide.label]
+          ], {resize: true});
+          return bot.sendMessage(msg.from.id, '你可能要执行：', {replyMarkup});
+          }
+          let replyMarkup = bot.keyboard([
+            [BUTTONS.update.label, BUTTONS.runshell.label],
+            [BUTTONS.hide.label]
+          ], {resize: true});
+          bot.sendMessage(msg.from.id, '你可能要执行：', {replyMarkup});
+        return sm({ chat_id, text: '未识别出分享ID' });
       }
       if (text.startsWith('/help')) return send_help(chat_id)
       if (text.startsWith('/bm')) {
@@ -104,7 +243,7 @@ bot.on('text', (msg) => {
         send_task_info({ task_id, chat_id }).catch(console.error)
       } else if (message_str.includes('drive.google.com/') || validate_fid(text)) {
         return send_choice({ fid: fid || text, chat_id })
-      } 
+      }
 });
 
 // Inline button callback
@@ -154,56 +293,6 @@ bot.on('callbackQuery', msg => {
     return reply_cb_query({ id, data }).catch(console.error)
   }
     return bot.answerCallbackQuery(msg.id, `Inline button callback: ${ msg.data }`, true);
-});
-
-//bot.sendMessage(854331334,"you gdutils_bot ins online!") 
-
-bot.on('/start', (msg) => {
-  const id = msg.from.id;
-  if(adminUsers.indexOf(id) < 0){
-      msg.reply.text('您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username');
-      return console.warn('收到非白名单用户的请求')
-  }
-  msg.reply.text(`your chat id:\n ${msg.from.id}`);
-  return bot.sendMessage(msg.from.id, "You gdutils_bot ins online!!");
-});
-
-bot.on('/restart', (msg) => {
-  const id = msg.from.id;
-  if(adminUsers.indexOf(id) < 0){
-      msg.reply.text('您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username');
-      return console.warn('收到非白名单用户的请求')
-  }
-  console.log('run restart')
-  msg.reply.text('run restart');
-  const shell = spawn('pm2',['restart','all',]).on('error', function( err ){
-      msg.reply.text(err);
-  });
-  if(shell){
-     shell.stdout.on('data', (data) => {
-      msg.reply.text(`stdout:\n ${data}`);
-     });
-  }
-});
-
-bot.on('/update', msg => {
-  const id = msg.from.id;
-  if(adminUsers.indexOf(id) < 0){
-      msg.reply.text('您的用户名或ID不在机器人的白名单中，如果是您配置的机器人，请先到config.js中配置自己的username');
-      return console.warn('收到非白名单用户的请求')
-  }
-  console.log('run update')
-  msg.reply.text('run update');
-  const shell = spawn('git',['pull',]).on('error', function( err ){
-      msg.reply.text(err);
-  });
-
-  if(shell){
-     shell.stdout.on('data', (data) => {
-      msg.reply.text(`stdout:\n ${data}`);
-     });
-  }
-
 });
 
 bot.on(/^!.*/, (msg, props) => {
