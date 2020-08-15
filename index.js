@@ -24,7 +24,7 @@ const BUTTONS = {
     command: '/restart'
   },
   runshell: {
-    label: '👋 runshell',
+    label: '⌨️ runshell',
     command: '/runshell'
   },
   update: {
@@ -102,7 +102,7 @@ function exec (cmd, msg) {
     }
 }
 
-bot.sendMessage(1289547773,"you gdutils_bot ins online!") 
+// bot.sendMessage(1289547773,"you gdutils_bot ins online!") 
 
 bot.on('/yd', (msg) =>{
   if(MSG.startsWith('http')){
@@ -114,8 +114,9 @@ bot.on('/yd', (msg) =>{
   return bot.sendMessage(msg.from.id, '无地址 ！', {replyMarkup: 'hide'});
 });
 
-bot.on('/aria2', (msg) => msg.reply.text('aria2 aria2!'));
-bot.on('/hide', (msg) => msg.reply.text('Type /start to show keyboard again.', {replyMarkup: 'hide'}));
+bot.on('/aria2', (msg) => exec('/bin/aria2 '+ MSG, msg));
+
+bot.on('/hide', (msg) => msg.reply.text('', {replyMarkup: 'hide'}));
 bot.on('/restart', (msg) => {
   exec('pm2 restart all', msg);
   msg.reply.text('restarting!')
@@ -167,7 +168,7 @@ bot.on('text', (msg) => {
         return console.warn('收到非白名单用户的请求')
     }
       const fid = extract_fid(text) || extract_from_text(text) || extract_from_text(message_str)
-      const no_fid_commands = ['/task', '/help', '/bm']
+      const no_fid_commands = ['/task', '/help', '/bm', '/hide']
       if (!no_fid_commands.some(cmd => text.startsWith(cmd)) && !validate_fid(fid)) {
         
         if(message_str.startsWith('http')){
