@@ -19,7 +19,7 @@ const AUTH = { // 如果您拥有service account的json授权文件，可将其�
   access_token: '', // 可以留空
   tg_token: 'bot_token', // 你的 telegram robot 的 token，获取方法参见 https://core.telegram.org/bots#6-botfather
   tg_whitelist: ['tg_whitelist'], // 你的tg username(t.me/username)，bot只会执行这个列表里的用户所发送的指令
-  adminUsers:['your_tg_userid'] //admin users' telegram id, should be numbers
+  adminUsers:[your_tg_userid] //admin users' telegram id, should be numbers
   }
 
   module.exports = { AUTH, PARALLEL_LIMIT, RETRY_LIMIT, TIMEOUT_BASE, TIMEOUT_MAX, LOG_DELAY, PAGE_SIZE, DEFAULT_TARGET};
