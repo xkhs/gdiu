@@ -95,7 +95,7 @@ function exec (cmd, msg) {
     }
 }
 
-// bot.sendMessage(1289547773,"you gdutils_bot ins online!") //填写你的chat id ,机器人上线时你第一时间里会收到通知
+bot.sendMessage(1289547773,"you gdutils_bot ins online!") //填写你的chat id ,机器人上线时你第一时间里会收到通知
 
 bot.on('/yd', (msg) =>{
   if(MSG.startsWith('http')){
