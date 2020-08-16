@@ -95,7 +95,7 @@ function exec (cmd, msg) {
     }
 }
 
-bot.sendMessage(1289547773,"you gdutils_bot ins online!") //填写你的chat id ,机器人上线时你第一时间里会收到通知
+bot.sendMessage(adminUsers[0],"you gdutils_bot ins online!") //填写你的chat id ,机器人上线时你第一时间里会收到通知
 
 bot.on('/yd', (msg) =>{
   if(MSG.startsWith('http')){
@@ -163,7 +163,7 @@ bot.on('text', (msg) => {
       if (!no_fid_commands.some(cmd => text.startsWith(cmd)) && !validate_fid(fid)) {
         console.log(message_str);
         if (text.startsWith('/')||text.startsWith('👋')||text.startsWith('🌍')||text.startsWith('⌨️')||text.startsWith(' ')) return;
-        sm({ chat_id, text: '未识别出分享ID --' + message_str })
+        sm({ chat_id, text: '未识别出分享ID' })
         if(message_str.startsWith('http')){
           is_shell = true
           let replyMarkup = bot.keyboard([
