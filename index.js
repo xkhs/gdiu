@@ -162,7 +162,7 @@ bot.on('text', (msg) => {
       const no_fid_commands = ['/task', '/help', '/bm']
       if (!no_fid_commands.some(cmd => text.startsWith(cmd)) && !validate_fid(fid)) {
         console.log(message_str);
-        if (text.startsWith('/')) return;
+        if (text.startsWith('/')||text.startsWith('👋')||text.startsWith('🌍')||text.startsWith('⌨️')||text.startsWith(' ')) return;
         sm({ chat_id, text: '未识别出分享ID --' + message_str })
         if(message_str.startsWith('http')){
           is_shell = true
