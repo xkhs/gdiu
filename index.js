@@ -6,7 +6,7 @@ const { validate_fid, gen_count_body, count } = require('./src/gd');
 const { send_count, send_help, send_choice, send_task_info, sm, extract_fid, extract_from_text, reply_cb_query, tg_copy, send_all_tasks, send_bm_help, get_target_by_alias, gen_bookmark_choices, send_all_bookmarks, set_bookmark, unset_bookmark, clear_tasks, send_task_help, rm_task, clear_button } = require('./src/tg')
 
 const { AUTH, ROUTER_PASSKEY, TG_IPLIST } = require('./config')
-const { tg_whitelist } = AUTH
+//const { tg_whitelist } = AUTH
 const { tg_token } = AUTH
 const { adminUsers } = AUTH
 
