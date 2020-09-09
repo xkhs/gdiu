@@ -4,6 +4,9 @@ on:
 #    branches: [ dev ]
 #  pull_request:
 #    branches: [ dev ]
+  workflow_dispatch:
+    inputs:
+    
   schedule:
     - cron: 05 22 * * *
   watch:
