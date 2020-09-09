@@ -863,4 +863,50 @@ function print_progress (msg) {
   }
 }
 
-module.exports = { ls_folder, count, validate_fid, copy, dedupe, copy_file, gen_count_body, real_copy, get_name_by_id, get_info_by_id, get_access_token, get_sa_token, walk_and_save }
+async function walk_and_save_live ({ fid, not_teamdrive, update, service_account, leve=1 }) {
+  let result = []
+  const not_finished = []
+  const limit = pLimit(PARALLEL_LIMIT)
+
+  const loop = setInterval(() => {
+    const now = dayjs().format('HH:mm:ss')
+    const message = `${now} | 已获取对象 ${result.length} | 网络请求 进行中${limit.activeCount}/排队中${limit.pendingCount}`
+    print_progress(message)
+  }, 1000)
+
+  async function recur (parent) {
+    let files, should_save
+    if (update) {
+      files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account }))
+      should_save = true
+    } else {
+      const record = db.prepare('SELECT * FROM gd WHERE fid = ?').get(parent)
+      if (record) {
+        files = JSON.parse(record.info)
+      } else {
+        files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account }))
+        should_save = true
+      }
+    }
+    if (!files) return
+    if (files.not_finished) not_finished.push(parent)
+    should_save && save_files_to_db(parent, files)
+    const folders = files.filter(v => v.mimeType === FOLDER_TYPE)
+    files.forEach(v => v.parent = parent)
+    result = result.concat(files)
+    // return Promise.all(folders.map(v => recur(v.id)))
+  }
+  try {
+    await recur(fid)
+  } catch (e) {
+    console.error(e)
+  }
+  console.log('\n信息获取完毕')
+  not_finished.length ? console.log('未读取完毕的目录ID：', JSON.stringify(not_finished)) : console.log('所有目录读取完毕')
+  clearInterval(loop)
+  const smy = summary(result)
+  db.prepare('UPDATE gd SET summary=?, mtime=? WHERE fid=?').run(JSON.stringify(smy), Date.now(), fid)
+  return result
+}
+
+module.exports = { ls_folder, count, validate_fid, copy, dedupe, trash_file, copy_file, gen_count_body, real_copy, get_name_by_id, get_info_by_id, get_access_token, get_sa_token, walk_and_save, walk_and_save_live }

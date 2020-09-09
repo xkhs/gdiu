@@ -28,6 +28,8 @@ function send_help (chat_id) {
 =====================
 /help | 返回本条使用说明
 =====================
+/reload | 重启进程，中断所有进行中的任务(前提是进程由pm2守护)
+=====================
 /count shareID [-u] | 返回sourceID的文件统计信息
 sourceID可以是google drive分享网址本身，也可以是分享ID。如果命令最后加上 -u，则无视之前的记录强制从线上获取，适合一段时候后才更新完毕的分享链接。
 =====================
@@ -176,13 +178,11 @@ async function send_all_tasks (chat_id) {
     parse_mode: 'HTML',
     text: `所有拷贝任务：\n<pre>${text}</pre>`
   }).catch(err => {
+    console.error(err.message)
     // const description = err.response && err.response.data && err.response.data.description
     // if (description && description.includes('message is too long')) {
-    if (true) {
-      const text = [headers].concat(records.slice(-100)).map(v => v.join('\t')).join('\n')
-      return sm({ chat_id, parse_mode: 'HTML', text: `所有拷贝任务(只显示最近100条)：\n<pre>${text}</pre>` })
-    }
-    console.error(err)
+    const text = [headers].concat(records.slice(-100)).map(v => v.join('\t')).join('\n')
+    return sm({ chat_id, parse_mode: 'HTML', text: `所有拷贝任务(只显示最近100条)：\n<pre>${text}</pre>` })
   })
 }
 
@@ -227,6 +227,7 @@ async function send_task_info ({ task_id, chat_id }) {
   if (!message_id || status !== 'copying') return
   const loop = setInterval(async () => {
     const { text, status } = await get_task_info(task_id)
+    // TODO check if text changed
     if (status !== 'copying') clearInterval(loop)
     sm({ chat_id, message_id, text, parse_mode: 'HTML' }, 'editMessageText')
   }, 10 * 1000)
@@ -234,11 +235,13 @@ async function send_task_info ({ task_id, chat_id }) {
 
 async function tg_copy ({ fid, target, chat_id, update }) { // return task_id
   target = target || DEFAULT_TARGET
-  if (!target) {
-    sm({ chat_id, text: '请输入目的地ID或先在config.js里设置默认复制目的地ID(DEFAULT_TARGET)' })
-    return
-  }
+  if (!target) return sm({ chat_id, text: '请输入目的地ID或先在config.js里设置默认复制目的地ID(DEFAULT_TARGET)' })
+
   const file = await get_info_by_id(fid, !USE_PERSONAL_AUTH)
+  if (!file) {
+    const text = `无法获取对象信息，请检查链接是否有效且SA拥有相应的权限：https://drive.google.com/drive/folders/${fid}`
+    return sm({ chat_id, text })
+  }
   if (file && file.mimeType !== 'application/vnd.google-apps.folder') {
     return copy_file(fid, target, !USE_PERSONAL_AUTH).then(data => {
       sm({ chat_id, parse_mode: 'HTML', text: `复制单文件成功，文件位置：${gen_link(target)}` })
@@ -250,8 +253,7 @@ async function tg_copy ({ fid, target, chat_id, update }) { // return task_id
   let record = db.prepare('select id, status from task where source=? and target=?').get(fid, target)
   if (record) {
     if (record.status === 'copying') {
-      sm({ chat_id, text: '已有相同源ID和目的ID的任务正在进行，查询进度可输入 /task ' + record.id })
-      return
+      return sm({ chat_id, text: '已有相同源ID和目的ID的任务正在进行，查询进度可输入 /task ' + record.id })
     } else if (record.status === 'finished') {
       sm({ chat_id, text: `检测到已存在的任务 ${record.id}，开始继续拷贝` })
     }
@@ -296,10 +298,33 @@ function reply_cb_query ({ id, data }) {
 }
 
 async function send_count ({ fid, chat_id, update }) {
-  sm({ chat_id, text: `开始获取 ${fid} 所有文件信息，请稍后，建议统计完成前先不要开始复制，因为复制也需要先获取源文件夹信息` })
-  const table = await gen_count_body({ fid, update, type: 'tg', service_account: !USE_PERSONAL_AUTH })
-  if (!table) return sm({ chat_id, parse_mode: 'HTML', text: gen_link(fid) + ' 信息获取失败' })
+  const gen_text = payload => {
+    const { obj_count, processing_count, pending_count } = payload || {}
+    const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
+    return `统计对象：${gen_link(fid)}
+更新时间：${now}
+对象数量：${obj_count || ''}
+${pending_count ? ('排队请求：' + pending_count) : ''}
+${processing_count ? ('进行请求：' + processing_count) : ''}`
+  }
+
   const url = `https://api.telegram.org/bot${tg_token}/sendMessage`
+  let response
+  try {
+    response = await axins.post(url, { chat_id, text: `开始获取 ${fid} 所有文件信息，请稍后，建议统计完成前先不要开始复制，因为复制也需要先获取源文件夹信息` })
+  } catch (e) {}
+  const { data } = response || {}
+  const message_id = data && data.result && data.result.message_id
+  const message_updater = payload => sm({
+    chat_id,
+    message_id,
+    parse_mode: 'HTML',
+    text: gen_text(payload)
+  }, 'editMessageText')
+
+  const service_account = !USE_PERSONAL_AUTH
+  const table = await gen_count_body({ fid, update, service_account, type: 'tg', tg: message_id && message_updater })
+  if (!table) return sm({ chat_id, parse_mode: 'HTML', text: gen_link(fid) + ' 信息获取失败' })
   const gd_link = `https://drive.google.com/drive/folders/${fid}`
   const name = await get_folder_name(fid)
   return axins.post(url, {
@@ -309,25 +334,20 @@ async function send_count ({ fid, chat_id, update }) {
 源链接：${gd_link}
 ${table}</pre>`
   }).catch(async err => {
+    console.log(err.message)
     // const description = err.response && err.response.data && err.response.data.description
     // const too_long_msgs = ['request entity too large', 'message is too long']
     // if (description && too_long_msgs.some(v => description.toLowerCase().includes(v))) {
-    if (true) {
-      const smy = await gen_count_body({ fid, type: 'json', service_account: !USE_PERSONAL_AUTH })
-      const { file_count, folder_count, total_size } = JSON.parse(smy)
-      return sm({
-        chat_id,
-        parse_mode: 'HTML',
-        text: `链接：<a href="https://drive.google.com/drive/folders/${fid}">${fid}</a>\n<pre>
-表格太长超出telegram消息限制，只显示概要：
-目录名称：${name}
-文件总数：${file_count}
-目录总数：${folder_count}
-合计大小：${total_size}
-</pre>`
-      })
-    }
-    throw err
+    const limit = 20
+    const table = await gen_count_body({ fid, type: 'tg', service_account: !USE_PERSONAL_AUTH, limit })
+    return sm({
+      chat_id,
+      parse_mode: 'HTML',
+      text: `<pre>源文件夹名称：${name}
+源链接：${gd_link}
+表格太长超出telegram消息限制，只显示前${limit}条：
+${table}</pre>`
+    })
   })
 }
 
@@ -343,7 +363,7 @@ function sm (data, endpoint) {
 }
 
 function extract_fid (text) {
-  text = text.replace(/^\/count/, '').replace(/^\/copy/, '').replace(/\\/g, '').trim()
+  text = text.replace(/^\/count/, '').replace(/^\/copy/, '').replace(/\\n/g, '').replace(/\\/g, '').trim()
   const [source, target] = text.split(' ').map(v => v.trim())
   if (validate_fid(source)) return source
   try {

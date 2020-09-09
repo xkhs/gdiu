@@ -43,3 +43,8 @@ CREATE TABLE "bookmark" (
 CREATE UNIQUE INDEX "bookmark_alias" ON "bookmark" (
   "alias"
 );
+
+CREATE TABLE "acting" (
+  "act" TEXT,
+  "doing"  INTEGER
+);

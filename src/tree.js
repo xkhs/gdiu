@@ -8,7 +8,6 @@ function gen_tree_html (arr) {
 function tree_tpl (str) {
   return `<!doctype html>
 <html>
-
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
@@ -16,7 +15,6 @@ function tree_tpl (str) {
     <title>Folder Tree</title>
     <link href="https://cdn.jsdelivr.net/gh/iwestlin/gd-utils/static/tree.min.css" rel="stylesheet">
 </head>
-
 <body>
     <!-- source code: https://github.com/iwestlin/foldertree/blob/master/app.jsx -->
     <div id="root"></div>
@@ -25,7 +23,6 @@ function tree_tpl (str) {
     </script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/iwestlin/gd-utils/static/tree.min.js"></script>
 </body>
-
 </html>`
 }
 
@@ -51,7 +48,7 @@ function gen_tree_data (data, is_folder) {
   sort_folders(folders, 'count')
   sort_folders(sub_folders, 'count')
   folders.forEach(v => {
-    let {name, size, count, id} = v
+    let { name, size, count, id } = v
     if (name.length > 50) name = name.slice(0, 48) + '...'
     v.title = `${name} | [共${count}个文件 ${format_size(size)}]`
   })
@@ -66,7 +63,7 @@ function sort_folders (folders, type) {
 }
 
 function gen_node (v, folders) {
-  const {id, title, node} = v
+  const { id, title, node } = v
   if (node) return node
   return v.node = {
     title,

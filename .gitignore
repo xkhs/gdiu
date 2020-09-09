@@ -2,7 +2,7 @@ node_modules/
 gdurl.sqlite*
 config.js
 test.js
-sa/*.json
+sa/
 backup/*.sqlite
 package-lock.json
 telebot
