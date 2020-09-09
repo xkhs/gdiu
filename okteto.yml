@@ -1,0 +1,6 @@
+name: gdbot3
+image: registry.cloud.okteto.net/dissipator/gdbot3:v3.1
+command: ["/start.sh"]
+forward:
+  - 3000:3000
+
