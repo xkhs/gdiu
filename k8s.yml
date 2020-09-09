@@ -14,7 +14,7 @@ spec:
     spec:        # 指定该资源的内容
       containers:
       - name: gdbot      #容器的名字
-        image: registry.cloud.okteto.net/dissipator/gdbot:v3.1  #容器的镜像地址
+        image: registry.cloud.okteto.net/dissipator/gdbot3:v3.1  #容器的镜像地址
         env:
           - name: BOT_TOKEN
             value: 1325684369:AAHS4cVhNEKWPnEgdT9Bgxm8mImRqMVj6y8
