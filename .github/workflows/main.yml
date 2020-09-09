@@ -1,7 +1,11 @@
 name: okteto
 on:
-  #schedule:
-    #- cron: 10 22 * * *
+#  push:
+#    branches: [ dev ]
+#  pull_request:
+#    branches: [ dev ]
+  schedule:
+    - cron: 05 22 * * *
   watch:
     types: started      
 jobs:
@@ -25,13 +29,15 @@ jobs:
         sudo mv ./kubectl /usr/local/bin/kubectl
     - name: go kaishi
       run: |
-        #/home/runner/okteto-Linux-x86_64 login --token ${{ secrets.APITOKEN }}
+        /home/runner/okteto-Linux-x86_64 login --token ${{ secrets.APITOKEN }}
         #okteto的api密钥
-        #/home/runner/okteto-Linux-x86_64 namespace ${{ secrets.namespace }}
+        /home/runner/okteto-Linux-x86_64 namespace ${{ secrets.namespace }}
         #Namespace用户名
         #xx.yml  自己要部署项目
         #kubectl replace --force -f /home/runner/v2tls.yml    
         #kubectl replace 强制覆盖项目
-        cd /home/runner/work/okteto-reboot/okteto-reboot
-        ls
+        ls  /home/runner/work/
+        # push
+        cd /home/runner/work/gd-utils
+        okteto push
     
