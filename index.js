@@ -19,10 +19,10 @@ const BUTTONS = {
       label: '🌍 aria2',
       command: '/aria2'
   },
-  restart: {
-    label: '👋 restart',
-    command: '/restart'
-  },
+//   restart: {
+//     label: '👋 restart',
+//     command: '/restart'
+//   },
   runshell: {
     label: '👋 runshell',
     command: '/runshell'
@@ -111,13 +111,14 @@ bot.on('/yd', (msg) =>{
 bot.on('/aria2', (msg) => exec('aria2 ' + MSG, msg));
 bot.on('/hide', (msg) => msg.reply.text('Type /start to show keyboard again.', {replyMarkup: 'hide'}));
 bot.on('/restart', (msg) => {
-  exec('pm2 restart all', msg);
-  msg.reply.text('restarting!')
+  //   exec('pm2 restart all', msg);
+  msg.reply.text('已经取消此功能!')
+  msg.reply.text('代码已更新，请在后台执行pm2 restart all！')
 });
 
 bot.on('/update', msg => {
   exec('git pull -f', msg);
-  msg.reply.text('updating !')
+  msg.reply.text('代码已更新，请在后台执行pm2 restart all！')
 });
 
 bot.on('/runshell', msg => {
@@ -129,7 +130,7 @@ bot.on('/runshell', msg => {
 
 bot.on('/start', (msg) => {
   let replyMarkup = bot.keyboard([
-      [BUTTONS.update.label, BUTTONS.restart.label],
+      [BUTTONS.update.label],
       [BUTTONS.hide.label]
   ], {resize: true});
   return bot.sendMessage(msg.from.id, 'ChatId is ' + msg.chat.id + ',See keyboard below.', {replyMarkup});
