@@ -1,0 +1,47 @@
+apiVersion: apps/v1   # 1.9.0 之前的版本使用 apps/v1beta2，可通过命令 kubectl api-versions 查看
+kind: Deployment    #指定创建资源的角色/类型
+metadata:    #资源的元数据/属性
+  name: gdbot   #资源的名字，在同一个namespace中必须唯一
+spec:
+  replicas: 1    #副本数量2
+  selector:      #定义标签选择器
+    matchLabels:
+      app: gdbot
+  template:      #这里Pod的定义
+    metadata:
+      labels:    #Pod的label
+        app: gdbot
+    spec:        # 指定该资源的内容
+      containers:
+      - name: gdbot      #容器的名字
+        image: registry.cloud.okteto.net/dissipator/gdbot3:v3.1  #容器的镜像地址
+        env:
+          - name: BOT_TOKEN
+            value: 1325684369:AAHS4cVhNEKWPnEgdT9Bgxm8mImRqMVj6y8
+          - name: TG_UID
+            value: 854331334,884424842,1289547773
+          - name: DEFAULT_TARGET
+            value: 1rTuuu2byHzviu1vPrDL_m2cKJOMWWW3P
+        args:                                                    #启动参数
+          - 'BOT_TOKEN=1325684369:AAHS4cVhNEKWPnEgdT9Bgxm8mImRqMVj6y8'
+          - 'TG_UID=854331334,884424842,1289547773'
+          - 'DEFAULT_TARGET=1rTuuu2byHzviu1vPrDL_m2cKJOMWWW3P'
+        # ports:
+        # - containerPort: 3000  #容器对外的端口
+
+---
+
+apiVersion: v1
+kind: Service  # 指明资源类型是 service
+metadata:
+  name: gdbot  # service 的名字是 gdbot
+  annotations:
+    dev.okteto.com/auto-ingress: "gdbot"   #80端口二级域名自定义
+spec:
+  type: ClusterIP
+  ports: # 将 service 3000 端口映射到 pod 的 80 端口，使用 TCP 协议
+  - name: "gdbot"
+    port: 4200
+    targetPort: 3000  #Pod的外部访问端口，port和nodePort的数据通过这个端口进入到Pod内部，Pod里面的containers的端口映射到这个端口，提供服务
+  selector:
+    app: gdbot # 指明哪些 label 的 pod 作为 service 的后端
