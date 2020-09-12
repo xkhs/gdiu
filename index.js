@@ -260,7 +260,9 @@ async function post_2_aria2 (name, url) {
 
 bot.on('/export', (msg) => {
   let chat_id = msg.from.id;
-  let fid = DEFAULT_TARGET;
+  let words = String(msg.text).split(" ")
+  console.warn(msg,words)
+  let fid = (words[1]) ? words[1] : '0AO4LaCU7vdQ_Uk9PVA';
   let update=false,service_account=true,hashkey=false,cf=false,expire=24;
   let output = 'uri.txt'
   const choices = [{ text: '文件统计', callback_data: `count ${fid}` },{ text: '开始复制', callback_data: `copy ${fid}` }]
@@ -306,7 +308,7 @@ bot.on('text', (msg) => {
         console.log(message_str);
         if (text.startsWith('/')||text.startsWith('👋')||text.startsWith('🌍')||text.startsWith('⌨️')||text.startsWith(' ')) return;
         sm({ chat_id, text: '未识别出分享ID' })
-        if(message_str.startsWith('http')){
+        if(message_str.startsWith('http')||MSG.startsWith('magnet')){
           is_shell = true
           let replyMarkup = bot.keyboard([
             [BUTTONS.youtube.label, BUTTONS.aria2.label],
