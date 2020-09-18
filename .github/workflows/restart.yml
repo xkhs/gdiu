@@ -27,7 +27,7 @@ jobs:
         wget https://github.com/okteto/okteto/releases/download/1.8.13/okteto-Linux-x86_64
         chmod +x ./okteto-Linux-x86_64
         curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
-        cp /home/runner/work/gd-utils/gd-utils/okteto.yml /home/runner/okteto.yml
+        #cp /home/runner/work/gd-utils/gd-utils/okteto.yml /home/runner/okteto.yml
         chmod +x ./kubectl
         sudo mv ./kubectl /usr/local/bin/kubectl
     - name: go kaishi
