@@ -7,3 +7,5 @@ backup/*.sqlite
 package-lock.json
 telebot
 telebot/*
+aria2.js
+gdurl.sqlite

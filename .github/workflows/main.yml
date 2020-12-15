@@ -16,8 +16,8 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get -y update
-        sudo apt-get -y install wget
-        sudo apt-get -y install curl
+        sudo apt-get -y install wget tree curl
+
     - name: Clone source
       run: |
         cd /home/runner
@@ -27,7 +27,7 @@ jobs:
         mv /home/runner/work/okteto-reboot/okteto-reboot/v2tls.yml /home/runner/v2tls.yml
         chmod +x ./kubectl
         sudo mv ./kubectl /usr/local/bin/kubectl
-    - name: go kaishi
+    - name: go restart
       run: |
         /home/runner/okteto-Linux-x86_64 login --token ${{ secrets.APITOKEN }}
         #okteto的api密钥

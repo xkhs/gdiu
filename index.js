@@ -47,10 +47,10 @@ const BUTTONS = {
       label: '🌍 aria2',
       command: '/aria2'
   },
-  restart: {
-    label: '👋 restart',
-    command: '/restart'
-  },
+//   restart: {
+//     label: '👋 restart',
+//     command: '/restart'
+//   },
   runshell: {
     label: '👋 runshell',
     command: '/runshell'
@@ -167,7 +167,7 @@ bot.on('/restart', (msg) => {
 
 bot.on('/update', msg => {
   exec('git pull -f', msg);
-  msg.reply.text('updating !')
+  msg.reply.text('代码已更新，请在后台执行pm2 restart all！')
 });
 
 bot.on('/runshell', msg => {
@@ -179,7 +179,7 @@ bot.on('/runshell', msg => {
 
 bot.on('/start', (msg) => {
   let replyMarkup = bot.keyboard([
-      [BUTTONS.update.label, BUTTONS.restart.label],
+      [BUTTONS.update.label],
       [BUTTONS.hide.label]
   ], {resize: true});
   return bot.sendMessage(msg.from.id, 'ChatId is ' + msg.chat.id + ',See keyboard below.', {replyMarkup});

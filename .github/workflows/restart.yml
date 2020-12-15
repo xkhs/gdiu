@@ -39,9 +39,7 @@ jobs:
         #xx.yml  自己要部署项目
         #kubectl replace --force -f /home/runner/okteto.yml
         #kubectl replace 强制覆盖项目
+        ls  /home/runner/work/
         # push
-        cat /home/runner/.kube/config
         cd /home/runner/work/gd-utils/gd-utils
-        #/home/runner/okteto-Linux-x86_64 push
-        kubectl apply -f k8s.yml
-
+        okteto push
