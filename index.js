@@ -117,7 +117,7 @@ function exec (cmd, msg) {
        shell.stdout.on('data', (data) => {
         msg.reply.text(`${data}`);
        });
-       shell.stderr.on('data', (data) => {
+        shell.stderr.on('data', (data) => {
         msg.reply.text(`stderr: ${data}`);
        });
     }
@@ -138,7 +138,21 @@ bot.on('/yd', (msg) =>{
   return bot.sendMessage(msg.from.id, '无地址 ！', {replyMarkup: 'hide'});
 });
 
-bot.on('/aria2', (msg) => exec('aria2 ' + MSG, msg));
+// bot.on('/aria2', (msg) => exec('aria2 ' + MSG, msg));
+bot.on('/aria2', (msg) => {
+  exec('aria2 ' + MSG, msg)
+  post_2_aria2("name",MSG)
+    .then(res  => {
+      // console.warn(res)
+      const msgs = `download_uri:\n${download_uri}`
+      return sm({chat_id,text: `${msgs}\n 成功推送下载:${res.result}`})
+    })
+    .catch(error=>{
+      console.warn(error)
+      return sm({chat_id,text: `${error}`})
+    })
+});
+
 bot.on('/hide', (msg) => msg.reply.text('Type /start to show keyboard again.', {replyMarkup: 'hide'}));
 bot.on('/restart', (msg) => {
   acting_tasks=db.prepare('select doing from acting where act=?').all('restart')[0];
