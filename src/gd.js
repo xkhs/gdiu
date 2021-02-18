@@ -6,11 +6,9 @@ const pLimit = require('p-limit')
 const axios = require('@viegg/axios')
 const { GoogleToken } = require('gtoken')
 const handle_exit = require('signal-exit')
-const bytes = require('bytes')
 const { argv } = require('yargs')
 
 let { PARALLEL_LIMIT, EXCEED_LIMIT } = require('../config')
-// TODO 根据过去一段时间内的请求成功数和失败数动态调整并行请求数
 PARALLEL_LIMIT = argv.l || argv.limit || PARALLEL_LIMIT
 EXCEED_LIMIT = EXCEED_LIMIT || 7
 
@@ -18,7 +16,6 @@ const { AUTH, RETRY_LIMIT, TIMEOUT_BASE, TIMEOUT_MAX, LOG_DELAY, PAGE_SIZE, DEFA
 const { db } = require('../db')
 const { make_table, make_tg_table, make_html, summary } = require('./summary')
 const { gen_tree_html } = require('./tree')
-const { snap2html } = require('./snap2html')
 
 const FILE_EXCEED_MSG = '您的团队盘文件数已超限(40万)，停止复制。请将未复制完成的文件夹(或者它的任意子文件夹)移到另一个(sa也有权限的)团队盘中，再执行一遍复制指令即可接上进度继续复制(是的你没看错...)'
 const FOLDER_TYPE = 'application/vnd.google-apps.folder'
@@ -72,14 +69,8 @@ function get_sa_batch () {
   })
 }
 
-handle_exit((code, signal) => {
-  // console.log(code, signal)
-  // ctrl+c: null SIGINT
-  // pm2 reload: null SIGINT
-  // tg bot /reload: 0 null
-  // normal exit: 0 null
-  if (code === 0 && !is_pm2()) return // normal exit in command line, do nothing
-  // TODO: record running task ID for each thread
+handle_exit(() => {
+  // console.log('handle_exit running')
   const records = db.prepare('select id from task where status=?').all('copying')
   records.forEach(v => {
     db.prepare('update task set status=? where id=?').run('interrupt', v.id)
@@ -88,38 +79,15 @@ handle_exit((code, signal) => {
   db.close()
 })
 
-async function save_md5 ({fid, size, not_teamdrive, update, service_account}) {
-  let files = await walk_and_save({ fid, not_teamdrive, update, service_account })
-  files = files.filter(v => v.mimeType !== FOLDER_TYPE)
-  if (typeof size !== 'number') size = bytes.parse(size)
-  if (size) files = files.filter(v => v.size >= size)
-  let cnt = 0
-  files.forEach(file => {
-    const {md5Checksum, id} = file
-    if (!md5Checksum) return
-    const record = db.prepare('SELECT * FROM hash WHERE gid = ?').get(id)
-    if (record) return
-    db.prepare('INSERT INTO hash (gid, md5) VALUES (?, ?)')
-      .run(id, md5Checksum)
-    cnt++
-  })
-  console.log('已新增', cnt, '条md5记录')
-}
-
-function get_gid_by_md5 (md5) {
-  const records = db.prepare('select * from hash where md5=? and status=?').all(md5, 'normal')
-  if (!records.length) return null
-  // console.log('got existed md5 record in db:', md5)
-  return get_random_element(records).gid
-}
-
-async function gen_count_body ({ fid, type, update, service_account, limit, tg }) {
+async function gen_count_body ({ fid, type, update, service_account }) {
   async function update_info () {
-    const info = await walk_and_save({ fid, update, service_account, tg })
-    return [info, summary(info)]
+    const info = await walk_and_save({ fid, update, service_account }) // 这一步已经将fid记录存入数据库中了
+    const row = db.prepare('SELECT summary from gd WHERE fid=?').get(fid)
+    if (!row) return []
+    return [info, JSON.parse(row.summary)]
   }
 
-  function render_smy (smy, type, unfinished_number) {
+  function render_smy (smy, type) {
     if (!smy) return
     if (['html', 'curl', 'tg'].includes(type)) {
       smy = (typeof smy === 'object') ? smy : JSON.parse(smy)
@@ -128,9 +96,7 @@ async function gen_count_body ({ fid, type, update, service_account, limit, tg }
         curl: make_table,
         tg: make_tg_table
       }
-      let result = type_func[type](smy, limit)
-      if (unfinished_number) result += `\n未统计完成目录数量：${unfinished_number}`
-      return result
+      return type_func[type](smy)
     } else { // 默认输出json
       return (typeof smy === 'string') ? smy : JSON.stringify(smy)
     }
@@ -140,9 +106,6 @@ async function gen_count_body ({ fid, type, update, service_account, limit, tg }
 
   let info, smy
   const record = db.prepare('SELECT * FROM gd WHERE fid = ?').get(fid)
-  if (!file && !record) {
-    throw new Error(`无法获取对象信息，请检查链接是否有效且SA拥有相应的权限：https://drive.google.com/drive/folders/${fid}`)
-  }
   if (!record || update) {
     [info, smy] = await update_info()
   }
@@ -161,41 +124,24 @@ async function gen_count_body ({ fid, type, update, service_account, limit, tg }
   } else {
     [info, smy] = await update_info()
   }
-  return render_smy(smy, type, info.unfinished_number)
+  return render_smy(smy, type)
 }
 
 async function count ({ fid, update, sort, type, output, not_teamdrive, service_account }) {
   sort = (sort || '').toLowerCase()
   type = (type || '').toLowerCase()
   output = (output || '').toLowerCase()
-  let out_str
   if (!update) {
-    if (!type && !sort && !output) {
-      const record = db.prepare('SELECT * FROM gd WHERE fid = ?').get(fid)
-      const smy = record && record.summary && JSON.parse(record.summary)
-      if (smy) return console.log(make_table(smy))
-    }
     const info = get_all_by_fid(fid)
     if (info) {
       console.log('找到本地缓存数据，缓存时间：', dayjs(info.mtime).format('YYYY-MM-DD HH:mm:ss'))
-      if (type === 'snap') {
-        const name = await get_name_by_id(fid, service_account)
-        out_str = snap2html({ root: { name, id: fid }, data: info })
-      } else {
-        out_str = get_out_str({ info, type, sort })
-      }
+      const out_str = get_out_str({ info, type, sort })
       if (output) return fs.writeFileSync(output, out_str)
       return console.log(out_str)
     }
   }
-  const with_modifiedTime = type === 'snap'
-  const result = await walk_and_save({ fid, not_teamdrive, update, service_account, with_modifiedTime })
-  if (type === 'snap') {
-    const name = await get_name_by_id(fid, service_account)
-    out_str = snap2html({ root: { name, id: fid }, data: result })
-  } else {
-    out_str = get_out_str({ info: result, type, sort })
-  }
+  const result = await walk_and_save({ fid, not_teamdrive, update, service_account })
+  const out_str = get_out_str({ info: result, type, sort })
   if (output) {
     fs.writeFileSync(output, out_str)
   } else {
@@ -251,15 +197,10 @@ function get_all_by_fid (fid) {
   }
 }
 
-async function walk_and_save ({ fid, not_teamdrive, update, service_account, with_modifiedTime, tg }) {
+async function walk_and_save ({ fid, not_teamdrive, update, service_account }) {
   let result = []
-  const unfinished_folders = []
+  const not_finished = []
   const limit = pLimit(PARALLEL_LIMIT)
-
-  if (update) {
-    const exists = db.prepare('SELECT fid FROM gd WHERE fid = ?').get(fid)
-    exists && db.prepare('UPDATE gd SET summary=? WHERE fid=?').run(null, fid)
-  }
 
   const loop = setInterval(() => {
     const now = dayjs().format('HH:mm:ss')
@@ -267,30 +208,22 @@ async function walk_and_save ({ fid, not_teamdrive, update, service_account, wit
     print_progress(message)
   }, 1000)
 
-  const tg_loop = tg && setInterval(() => {
-    tg({
-      obj_count: result.length,
-      processing_count: limit.activeCount,
-      pending_count: limit.pendingCount
-    })
-  }, 10 * 1000)
-
   async function recur (parent) {
     let files, should_save
     if (update) {
-      files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account, with_modifiedTime }))
+      files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account }))
       should_save = true
     } else {
       const record = db.prepare('SELECT * FROM gd WHERE fid = ?').get(parent)
       if (record) {
         files = JSON.parse(record.info)
       } else {
-        files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account, with_modifiedTime }))
+        files = await limit(() => ls_folder({ fid: parent, not_teamdrive, service_account }))
         should_save = true
       }
     }
     if (!files) return
-    if (files.unfinished) unfinished_folders.push(parent)
+    if (files.not_finished) not_finished.push(parent)
     should_save && save_files_to_db(parent, files)
     const folders = files.filter(v => v.mimeType === FOLDER_TYPE)
     files.forEach(v => v.parent = parent)
@@ -303,25 +236,16 @@ async function walk_and_save ({ fid, not_teamdrive, update, service_account, wit
     console.error(e)
   }
   console.log('\n信息获取完毕')
-  unfinished_folders.length ? console.log('未读取完毕的目录ID：', JSON.stringify(unfinished_folders)) : console.log('所有目录读取完毕')
+  not_finished.length ? console.log('未读取完毕的目录ID：', JSON.stringify(not_finished)) : console.log('所有目录读取完毕')
   clearInterval(loop)
-  if (tg_loop) {
-    clearInterval(tg_loop)
-    tg({
-      obj_count: result.length,
-      processing_count: limit.activeCount,
-      pending_count: limit.pendingCount
-    })
-  }
-  const smy = unfinished_folders.length ? null : summary(result)
-  smy && db.prepare('UPDATE gd SET summary=?, mtime=? WHERE fid=?').run(JSON.stringify(smy), Date.now(), fid)
-  result.unfinished_number = unfinished_folders.length
+  const smy = summary(result)
+  db.prepare('UPDATE gd SET summary=?, mtime=? WHERE fid=?').run(JSON.stringify(smy), Date.now(), fid)
   return result
 }
 
 function save_files_to_db (fid, files) {
   // 不保存请求未完成的目录，那么下次调用get_all_by_id会返回null，从而再次调用walk_and_save试图完成此目录的请求
-  if (files.unfinished) return
+  if (files.not_finished) return
   let subf = files.filter(v => v.mimeType === FOLDER_TYPE).map(v => v.id)
   subf = subf.length ? JSON.stringify(subf) : null
   const exists = db.prepare('SELECT fid FROM gd WHERE fid = ?').get(fid)
@@ -334,7 +258,7 @@ function save_files_to_db (fid, files) {
   }
 }
 
-async function ls_folder ({ fid, not_teamdrive, service_account, with_modifiedTime }) {
+async function ls_folder ({ fid, not_teamdrive, service_account }) {
   let files = []
   let pageToken
   const search_all = { includeItemsFromAllDrives: true, supportsAllDrives: true }
@@ -342,9 +266,6 @@ async function ls_folder ({ fid, not_teamdrive, service_account, with_modifiedTi
   params.q = `'${fid}' in parents and trashed = false`
   params.orderBy = 'folder,name desc'
   params.fields = 'nextPageToken, files(id, name, mimeType, size, md5Checksum)'
-  if (with_modifiedTime) {
-    params.fields = 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)'
-  }
   params.pageSize = Math.min(PAGE_SIZE, 1000)
   // const use_sa = (fid !== 'root') && (service_account || !not_teamdrive) // 不带参数默认使用sa
   const use_sa = (fid !== 'root') && service_account
@@ -373,7 +294,7 @@ async function ls_folder ({ fid, not_teamdrive, service_account, with_modifiedTi
     }
     if (!data) {
       console.error('读取目录未完成(部分读取), 参数:', params)
-      files.unfinished = true
+      files.not_finished = true
       return files
     }
     files = files.concat(data.files)
@@ -413,7 +334,7 @@ async function get_access_token () {
   return data.access_token
 }
 
-// get_sa_token().then(console.log).catch(console.error)
+// get_sa_token().catch(console.error)
 async function get_sa_token () {
   if (!SA_TOKENS.length) SA_TOKENS = get_sa_batch()
   while (SA_TOKENS.length) {
@@ -485,8 +406,12 @@ async function create_folder (name, parent, use_sa, limit) {
 }
 
 async function get_name_by_id (fid, use_sa) {
-  const info = await get_info_by_id(fid, use_sa)
-  return info ? info.name : fid
+  try {
+    const { name } = await get_info_by_id(fid, use_sa)
+    return name
+  } catch (e) {
+    return fid
+  }
 }
 
 async function get_info_by_id (fid, use_sa) {
@@ -495,21 +420,12 @@ async function get_info_by_id (fid, use_sa) {
     includeItemsFromAllDrives: true,
     supportsAllDrives: true,
     corpora: 'allDrives',
-    fields: 'id, name, size, parents, mimeType, modifiedTime'
+    fields: 'id, name, size, parents, mimeType'
   }
   url += '?' + params_to_query(params)
-  let retry = 0
-  while (retry < RETRY_LIMIT) {
-    try {
-      const headers = await gen_headers(use_sa)
-      const { data } = await axins.get(url, { headers })
-      return data
-    } catch (e) {
-      retry++
-      handle_error(e)
-    }
-  }
-  // throw new Error('无法获取此ID的文件信息：' + fid)
+  const headers = await gen_headers(use_sa)
+  const { data } = await axins.get(url, { headers })
+  return data
 }
 
 async function user_choose () {
@@ -531,13 +447,6 @@ async function copy ({ source, target, name, min_size, update, not_teamdrive, se
   target = target || DEFAULT_TARGET
   if (!target) throw new Error('目标位置不能为空')
 
-  const file = await get_info_by_id(source, service_account)
-  if (!file) return console.error(`无法获取对象信息，请检查链接是否有效且SA拥有相应的权限：https://drive.google.com/drive/folders/${source}`)
-  if (file && file.mimeType !== FOLDER_TYPE) {
-    if (argv.hash_server === 'local') source = get_gid_by_md5(file.md5Checksum)
-    return copy_file(source, target, service_account).catch(console.error)
-  }
-
   const record = db.prepare('select id, status from task where source=? and target=?').get(source, target)
   if (record && record.status === 'copying') return console.log('已有相同源和目的地的任务正在运行，强制退出')
 
@@ -557,9 +466,8 @@ async function real_copy ({ source, target, name, min_size, update, dncnr, not_t
     if (name) {
       return create_folder(name, target, service_account)
     } else {
-      const file = await get_info_by_id(source, service_account)
-      if (!file) throw new Error(`无法获取对象信息，请检查链接是否有效且SA拥有相应的权限：https://drive.google.com/drive/folders/${source}`)
-      return create_folder(file.name, target, service_account)
+      const source_info = await get_info_by_id(source, service_account)
+      return create_folder(source_info.name, target, service_account)
     }
   }
 
@@ -662,7 +570,7 @@ async function copy_files ({ files, mapping, service_account, root, task_id }) {
       files = null
       throw err
     }
-    if (concurrency >= PARALLEL_LIMIT) {
+    if (concurrency > PARALLEL_LIMIT) {
       await sleep(100)
       continue
     }
@@ -672,14 +580,12 @@ async function copy_files ({ files, mapping, service_account, root, task_id }) {
       continue
     }
     concurrency++
-    let { id, parent, md5Checksum } = file
-    if (argv.hash_server === 'local') id = get_gid_by_md5(md5Checksum) || id
+    const { id, parent } = file
     const target = mapping[parent] || root
-    const use_sa = (id !== file.id) ? true : service_account // 如果在本地数据库中找到了相同md5的记录，则使用sa拷贝
-    copy_file(id, target, use_sa, null, task_id).then(new_file => {
+    copy_file(id, target, service_account, null, task_id).then(new_file => {
       if (new_file) {
         count++
-        db.prepare('INSERT INTO copied (taskid, fileid) VALUES (?, ?)').run(task_id, file.id)
+        db.prepare('INSERT INTO copied (taskid, fileid) VALUES (?, ?)').run(task_id, id)
       }
     }).catch(e => {
       err = e
@@ -687,8 +593,7 @@ async function copy_files ({ files, mapping, service_account, root, task_id }) {
       concurrency--
     })
   } while (concurrency || files.length)
-  clearInterval(loop)
-  if (err) throw err
+  return clearInterval(loop)
   // const limit = pLimit(PARALLEL_LIMIT)
   // let count = 0
   // const loop = setInterval(() => {
@@ -697,7 +602,6 @@ async function copy_files ({ files, mapping, service_account, root, task_id }) {
   //   const message = `${now} | 已复制文件数 ${count} | 网络请求 进行中${activeCount}/排队中${pendingCount}`
   //   print_progress(message)
   // }, 1000)
-  // 可能造成内存占用过大被node强制退出
   // return Promise.all(files.map(async file => {
   //   const { id, parent } = file
   //   const target = mapping[parent] || root
@@ -738,24 +642,21 @@ async function copy_file (id, parent, use_sa, limit, task_id) {
         if (task_id) db.prepare('update task set status=? where id=?').run('error', task_id)
         throw new Error(FILE_EXCEED_MSG)
       }
-      if (!use_sa && message && message.toLowerCase().includes('rate limit')) {
-        throw new Error('个人帐号触发限制：' + message)
+      if (use_sa && message && message.toLowerCase().includes('rate limit')) {
+        retry--
+        if (gtoken.exceed_count >= EXCEED_LIMIT) {
+          SA_TOKENS = SA_TOKENS.filter(v => v.gtoken !== gtoken)
+          if (!SA_TOKENS.length) SA_TOKENS = get_sa_batch()
+          console.log(`此帐号连续${EXCEED_LIMIT}次触发使用限额，本批次剩余可用SA数量：`, SA_TOKENS.length)
+        } else {
+          // console.log('此帐号触发使用限额，已标记，若下次请求正常则解除标记，否则剔除此SA')
+          if (gtoken.exceed_count) {
+            gtoken.exceed_count++
+          } else {
+            gtoken.exceed_count = 1
+          }
+        }
       }
-      // if (use_sa && message && message.toLowerCase().includes('user rate limit')) {
-      //   if (retry >= RETRY_LIMIT) throw new Error(`此资源连续${EXCEED_LIMIT}次触发userRateLimitExceeded错误，停止复制`)
-      //   if (gtoken.exceed_count >= EXCEED_LIMIT) {
-      //     SA_TOKENS = SA_TOKENS.filter(v => v.gtoken !== gtoken)
-      //     if (!SA_TOKENS.length) SA_TOKENS = get_sa_batch()
-      //     console.log(`此帐号连续${EXCEED_LIMIT}次触发使用限额，本批次剩余可用SA数量：`, SA_TOKENS.length)
-      //   } else {
-      //     console.log('此帐号触发使用限额，已标记，若下次请求正常则解除标记，否则剔除此SA')
-      //     if (gtoken.exceed_count) {
-      //       gtoken.exceed_count++
-      //     } else {
-      //       gtoken.exceed_count = 1
-      //     }
-      //   }
-      // }
     }
   }
   if (use_sa && !SA_TOKENS.length) {
@@ -837,10 +738,9 @@ function find_dupe (arr) {
     return !has_child
   })
   for (const file of files) {
-    const { md5Checksum, parent, name, size } = file
+    const { md5Checksum, parent, name } = file
     // 根据文件位置和md5值来判断是否重复
-    const key = parent + '|' + md5Checksum
-    // const key = md5Checksum + '|' + size
+    const key = parent + '|' + md5Checksum // + '|' + name
     if (exists[key]) {
       dupe_files.push(file)
     } else {
@@ -947,10 +847,10 @@ function handle_error (err) {
   const data = err && err.response && err.response.data
   if (data) {
     const message = data.error && data.error.message
-    if (message && message.toLowerCase().includes('rate limit') && !argv.verbose) return
+    if (message && message.toLowerCase().includes('rate limit')) return
     console.error(JSON.stringify(data))
   } else {
-    if (!err.message.includes('timeout') || argv.verbose) console.error(err.message)
+    if (!err.message.includes('timeout')) console.error(err.message)
   }
 }
 
@@ -963,4 +863,4 @@ function print_progress (msg) {
   }
 }
 
-module.exports = { ls_folder, count, validate_fid, copy, dedupe, copy_file, gen_count_body, real_copy, get_name_by_id, get_info_by_id, get_access_token, get_sa_token, walk_and_save, save_md5 }
+module.exports = { ls_folder, count, validate_fid, copy, dedupe, copy_file, gen_count_body, real_copy, get_name_by_id, get_info_by_id, get_access_token, get_sa_token, walk_and_save }
